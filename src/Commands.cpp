@@ -17,12 +17,12 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
             break;
         }
     }
-    std::string channelName, pass ;
+    std::string channelName, pass, what;
     std::istringstream iss(command.substr(5));
     iss >> channelName ;
     if (channelName[0] != '#')
     {
-        std::string what = " :Error: Channel start with #\r\n";
+        what = " :Error: Channel start with #\r\n";
         std::string errorMessage = ERROR_MESSAGE2(nick);
             sendData(fd, errorMessage);
         client.clearCommand();
@@ -38,7 +38,6 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
     if (it != channels.end()) 
     {
         // Channel already exists
-        std::string what = " :Error: CHANNEL limit\r\n";
         if ((channels[channelName].isInviteOnly() && channels[channelName].isInvited(nick)) || channels[channelName].isOperator(fd))
         {
             // User is invited, create the channel
@@ -46,6 +45,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
             if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
                 createChannel(channelName, nick, fd);
             else {
+                what = " :Error: CHANNEL limit\r\n";
                 std::string errorMessage = ERROR_MESSAGE2(nick);
                 sendData(fd, errorMessage);
             }
@@ -56,6 +56,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
                 if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
                     createChannel(channelName, nick, fd);
                 else {
+                    what = " :Error: CHANNEL limit\r\n";
                     std::string errorMessage = ERROR_MESSAGE2(nick);
                     sendData(fd, errorMessage);
                 }
@@ -65,6 +66,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
                 if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
                     createChannel(channelName, nick, fd);
                 else {
+                    what = " :Error: CHANNEL limit\r\n";
                     std::string errorMessage = ERROR_MESSAGE2(nick);
                     sendData(fd, errorMessage);
                 }
