@@ -37,54 +37,56 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
     std::map<std::string, Channel>::iterator it = channels.find(channelName);
     if (it != channels.end()) 
     {
-        // Channel already exists
-        std::string what = " :Error: CHANNEL limit\r\n";
-        if ((channels[channelName].isInviteOnly() && channels[channelName].isInvited(nick)) || channels[channelName].isOperator(fd))
-        {
-            // User is invited, create the channel
-            int check = channels[channelName].getChannelLimit();
-            if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
-                createChannel(channelName, nick, fd);
-            else {
+        // Channel already exists - validate permissions and add user to existing channel
+        
+        // Check if user is already in the channel
+        if (channels[channelName].isUserInChannel(nick)) {
+            // User is already in the channel, silently ignore or send a notice
+            return;
+        }
+        
+        // Check invite-only mode (+i)
+        if (channels[channelName].isInviteOnly()) {
+            // User must be invited or be an operator to join
+            if (!channels[channelName].isInvited(nick) && !channels[channelName].isOperator(fd)) {
+                std::string what = " :Error: you are not invited\r\n";
                 std::string errorMessage = ERROR_MESSAGE2(nick);
                 sendData(fd, errorMessage);
+                return;
             }
-        } 
-        else if (!channels[channelName].isInviteOnly()) {
-            if (channels[channelName].hasPasswordSet() && channels[channelName].getPass() == pass) {
-                int check = channels[channelName].getChannelLimit();
-                if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
-                    createChannel(channelName, nick, fd);
-                else {
-                    std::string errorMessage = ERROR_MESSAGE2(nick);
-                    sendData(fd, errorMessage);
-                }
-            }
-            else if (!channels[channelName].hasPasswordSet()) {
-                int check = channels[channelName].getChannelLimit();
-                if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
-                    createChannel(channelName, nick, fd);
-                else {
-                    std::string errorMessage = ERROR_MESSAGE2(nick);
-                    sendData(fd, errorMessage);
-                }
-            }
-            else if (channels[channelName].hasPasswordSet() && channels[channelName].getPass() != pass) {
-                what = " :Error: you need a password for this channel\r\n";
+        }
+        
+        // Check password (+k)
+        if (channels[channelName].hasPasswordSet()) {
+            if (channels[channelName].getPass() != pass) {
+                std::string what = " :Error: you need a password for this channel\r\n";
                 std::string errorMessage = ERROR_MESSAGE2(nick);
                 sendData(fd, errorMessage);
+                return;
             }
-
         }
-        else {
-            // User is not invited, send error message
-            what = " :Error: you are not invited\r\n";
-            std::string errorMessage = ERROR_MESSAGE2(nick);
-            sendData(fd, errorMessage);
+        
+        // Check user limit (+l)
+        if (channels[channelName].hasUserLimit()) {
+            int limit = channels[channelName].getChannelLimit();
+            if (channels[channelName].getCurrentUserCount() >= limit) {
+                std::string what = " :Error: CHANNEL limit\r\n";
+                std::string errorMessage = ERROR_MESSAGE2(nick);
+                sendData(fd, errorMessage);
+                return;
+            }
         }
+        
+        // All checks passed - add user to the existing channel
+        channels[channelName].addClient(nick, fd);
+        sendJoinMsg(nick, channelName, fd);
+        smallbroadcastMessageforjoin(nick, channelName);
     } 
     else 
+    {
+        // Channel doesn't exist - create new channel
         createChannel(channelName, nick, fd);
+    }
 }
 
 void Server::processPrivmsgCmd(Client& client, const std::string& command, int fd)
