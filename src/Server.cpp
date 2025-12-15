@@ -171,7 +171,7 @@ void Server::sendJoinMsg(const std::string& nickname, const std::string& channel
         if (i < clients.size() - 1)
             namesMessage += " ";
     }
-    namesMessage += "\n";
+    namesMessage += "\r\n";
     std::string endOfNamesMessage = END_OF_NAMES_MESSAGE(nickname, channelName);
     std::string channelMessage = CHANNEL_MESSAGE(channelName, creationTimeMessage);
 

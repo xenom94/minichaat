@@ -1,0 +1,7 @@
+[32m>>> SERVER STARTED <<<[0m
+[36mWaiting for connections...[0m
+Client <4> Connected
+Received data from client 4: PASS wrongpass
+Received data from client 4: QUIT
+Client <4> Disconnected
+[31m>>> SERVER CLOSED <<<[0m

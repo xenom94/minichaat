@@ -18,11 +18,12 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
         }
     }
     std::string channelName, pass ;
+    std::string what;  // Declare what at function scope
     std::istringstream iss(command.substr(5));
     iss >> channelName ;
     if (channelName[0] != '#')
     {
-        std::string what = " :Error: Channel start with #\r\n";
+        what = " :Error: Channel start with #\r\n";
         std::string errorMessage = ERROR_MESSAGE2(nick);
             sendData(fd, errorMessage);
         client.clearCommand();
@@ -37,8 +38,13 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
     std::map<std::string, Channel>::iterator it = channels.find(channelName);
     if (it != channels.end()) 
     {
+        // Check if user is already in channel
+        if (channels[channelName].isUserInChannel(nick)) {
+            client.clearCommand();
+            return;
+        }
+        
         // Channel already exists
-        std::string what = " :Error: CHANNEL limit\r\n";
         if ((channels[channelName].isInviteOnly() && channels[channelName].isInvited(nick)) || channels[channelName].isOperator(fd))
         {
             // User is invited, create the channel
@@ -46,7 +52,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
             if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
                 createChannel(channelName, nick, fd);
             else {
-                std::string errorMessage = ERROR_MESSAGE2(nick);
+                std::string errorMessage = ERROR_CHANNELISFULL(nick, channelName);
                 sendData(fd, errorMessage);
             }
         } 
@@ -56,6 +62,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
                 if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
                     createChannel(channelName, nick, fd);
                 else {
+                    what = " :Error: CHANNEL limit\r\n";
                     std::string errorMessage = ERROR_MESSAGE2(nick);
                     sendData(fd, errorMessage);
                 }
@@ -65,6 +72,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
                 if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
                     createChannel(channelName, nick, fd);
                 else {
+                    what = " :Error: CHANNEL limit\r\n";
                     std::string errorMessage = ERROR_MESSAGE2(nick);
                     sendData(fd, errorMessage);
                 }
@@ -78,8 +86,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
         }
         else {
             // User is not invited, send error message
-            what = " :Error: you are not invited\r\n";
-            std::string errorMessage = ERROR_MESSAGE2(nick);
+            std::string errorMessage = ERROR_INVITEONLYCHAN(nick, channelName);
             sendData(fd, errorMessage);
         }
     } 
@@ -141,29 +148,63 @@ void Server::processKickCmd(Client& client, const std::string& command, int fd)
     }
 
     std::getline(iss, reason);
+    if (channelName.empty() || channelName[0] != '#') {
+        client.clearCommand();
+        return;
+    }
     channelName = channelName.substr(1);
     channelName = trim(channelName);
     userToKick = trim(userToKick);
     reason = trim(reason);
 
+    // Check if channel exists
+    if (channels.find(channelName) == channels.end()) {
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_NOSUCHCHANNEL(nick, channelName);
+        sendData(fd, errorMessage);
+        client.clearCommand();
+        return;
+    }
+
     std::string sender = channels[channelName].getNickname(fd);
-    if (channels.find(channelName) != channels.end() && channels[channelName].isOperator(fd)) {
+    if (channels[channelName].isOperator(fd)) {
         int userFd = channels[channelName].findUserFdForKickRegulars(userToKick);
         if (userFd != -1) {
             channels[channelName].ejectUserfromusers(userFd);
             channels[channelName].ejectUserfromivited(userToKick);
+            channels[channelName].removeOperator(userToKick);
             std::string kickMessage = KICK_MESSAGE2(channelName, fd, userToKick, reason);
             smallBroadcastMsgForKick(sender, channelName, userToKick, reason);
             sendData(fd, kickMessage);
             sendData(userFd, kickMessage);
         } 
         else {
-            std::string errorMessage = ERROR_MESSAGE3(sender, channelName, userToKick);
+            std::string nick;
+            for (size_t i = 0; i < _clients.size(); ++i) {
+                if (_clients[i].getFd() == fd) {
+                    nick = _clients[i].getNick();
+                    break;
+                }
+            }
+            std::string errorMessage = ERROR_USERNOTINCHANNEL(nick, userToKick, channelName);
             sendData(fd, errorMessage);
         }
     }
     else {
-        std::string errorMessage = ERROR_MESSAGE4(sender, channelName, userToKick);
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_CHANOPRIVSNEEDED(nick, channelName);
         sendData(fd, errorMessage);
     }
 }
@@ -175,9 +216,14 @@ void Server::processTopicCmd(Client& client, const std::string& command, int fd)
     iss >> channelName;
     std::getline(iss, topic);
     
-    if (iss.fail()) {
+    if (iss.fail() || channelName.empty()) {
         std::string errorMessage = "Error: You Just missing an argument(3)\n";
         sendData(fd, errorMessage);
+        client.clearCommand();
+        return;
+    }
+    
+    if (channelName[0] != '#') {
         client.clearCommand();
         return;
     }
@@ -185,17 +231,40 @@ void Server::processTopicCmd(Client& client, const std::string& command, int fd)
     channelName = channelName.substr(1);
     channelName = trim(channelName);
     topic = trim(topic);
-    topic = topic.substr(1);
+    if (!topic.empty() && topic[0] == ':')
+        topic = topic.substr(1);
+    
+    // Check if channel exists
+    if (channels.find(channelName) == channels.end()) {
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_NOSUCHCHANNEL(nick, channelName);
+        sendData(fd, errorMessage);
+        client.clearCommand();
+        return;
+    }
     
     std::string sender = channels[channelName].getNickname(fd);
-    if ((channels.find(channelName) != channels.end() && channels[channelName].isOperator(fd)) || !channels[channelName].isTopicRestricted()) {
+    if (channels[channelName].isOperator(fd) || !channels[channelName].isTopicRestricted()) {
         channels[channelName].setTopic(topic);
         std::string topicMessage = TOPIC_MESSAGE2(sender, channelName, topic);
         sendData(fd, topicMessage);
         smallbroadcastMessageforTopic(sender, channelName, topic);
     }
     else {
-        std::string errorMessage = ERROR_MESSAGE6(sender, channelName);
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_CHANOPRIVSNEEDED(nick, channelName);
         sendData(fd, errorMessage);
     }
 }
@@ -205,7 +274,7 @@ void Server::processInviteCmd(Client& client, const std::string& command, int fd
     std::istringstream iss(command.substr(7));
     iss >> nickname >> channelName;
     
-    if (iss.fail()) {
+    if (iss.fail() || nickname.empty() || channelName.empty()) {
         std::string errorMessage = "Error: You Just missing an argument(2)\n";
         sendData(fd, errorMessage);
         client.clearCommand();
@@ -214,9 +283,28 @@ void Server::processInviteCmd(Client& client, const std::string& command, int fd
 
     channelName = trim(channelName);
     nickname = trim(nickname);
+    if (channelName[0] != '#') {
+        client.clearCommand();
+        return;
+    }
     channelName = channelName.substr(1);
     
-    if (channels.find(channelName) != channels.end() && channels[channelName].isOperator(fd)) {
+    // Check if channel exists
+    if (channels.find(channelName) == channels.end()) {
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_NOSUCHCHANNEL(nick, channelName);
+        sendData(fd, errorMessage);
+        client.clearCommand();
+        return;
+    }
+    
+    if (channels[channelName].isOperator(fd)) {
         channels[channelName].addClientinveted(nickname, fd);
         handleInvitation(fd, nickname, channelName);
     }

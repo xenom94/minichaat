@@ -32,19 +32,45 @@ void Server::processNickCmd(Client& client, const std::string& command, int fd) 
     iss >> cmd >> nick;
     nick = trim(nick);
 
+    // Check if nickname is empty
+    if (nick.empty()) {
+        std::string errorMessage = ERROR_NONICKNAMEGIVEN("*");
+        sendData(fd, errorMessage);
+        client.clearCommand();
+        return;
+    }
+
     // Check if there are more tokens after the nickname
     std::string remaining;
     if (iss >> remaining) {
         std::string errorMessage = "Error: Command requires only 1 parameter\n";
-            sendData(fd, errorMessage);
+        sendData(fd, errorMessage);
+        client.clearCommand();
+        return;
+    }
+
+    // Validate nickname length (RFC1459: max 9 chars, but modern servers allow more)
+    if (nick.length() > 30) {
+        std::string errorMessage = ERROR_ERRONEUSNICKNAME("*", nick);
+        sendData(fd, errorMessage);
+        client.clearCommand();
+        return;
+    }
+
+    // Validate nickname characters (must start with letter, contain only alphanumeric, -, _, [, ], \, `, ^, {, })
+    if (!std::isalpha(nick[0])) {
+        std::string errorMessage = ERROR_ERRONEUSNICKNAME("*", nick);
+        sendData(fd, errorMessage);
         client.clearCommand();
         return;
     }
 
     // Validate the nickname
     if (dontputthesamenick(nick)) {
-        std::string confirmation = "Please Use a Different Nickname : \n";
-        sendData(fd, confirmation);
+        std::string errorMessage = ERROR_NICKNAMEINUSE("*", nick);
+        sendData(fd, errorMessage);
+        client.clearCommand();
+        return;
     }
     else {
         setNickname(fd, nick);
