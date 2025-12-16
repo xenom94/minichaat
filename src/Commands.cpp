@@ -73,7 +73,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
                     createChannel(channelName, nick, fd);
                 else {
                     what = " :Error: CHANNEL limit\r\n";
-                    std::string errorMessage = ERROR_MESSAGE2(nick);
+                    std::string errorMessage = ERROR_CHANNELISFULL(nick, channelName);
                     sendData(fd, errorMessage);
                 }
             }
