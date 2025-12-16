@@ -62,8 +62,7 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
                 if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
                     createChannel(channelName, nick, fd);
                 else {
-                    what = " :Error: CHANNEL limit\r\n";
-                    std::string errorMessage = ERROR_MESSAGE2(nick);
+                    std::string errorMessage = ERROR_CHANNELISFULL(nick, channelName);
                     sendData(fd, errorMessage);
                 }
             }
@@ -72,14 +71,12 @@ void Server::processJoinCmd(Client& client, const std::string& command, int fd)
                 if (channels[channelName].getCurrentUserCount() < check || !channels[channelName].hasUserLimit())
                     createChannel(channelName, nick, fd);
                 else {
-                    what = " :Error: CHANNEL limit\r\n";
                     std::string errorMessage = ERROR_CHANNELISFULL(nick, channelName);
                     sendData(fd, errorMessage);
                 }
             }
             else if (channels[channelName].hasPasswordSet() && channels[channelName].getPass() != pass) {
-                what = " :Error: you need a password for this channel\r\n";
-                std::string errorMessage = ERROR_MESSAGE2(nick);
+                std::string errorMessage = ERROR_BADCHANNELKEY(nick, channelName);
                 sendData(fd, errorMessage);
             }
 
@@ -105,7 +102,14 @@ void Server::processPrivmsgCmd(Client& client, const std::string& command, int f
     std::getline(iss, message);
     
     if (iss.fail()) {
-        std::string errorMessage = "Error: You Just missing an argument(5)\n";
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_NEEDMOREPARAMS(nick, "PRIVMSG");
         sendData(fd, errorMessage);
         client.clearCommand();
         return;
@@ -141,7 +145,14 @@ void Server::processKickCmd(Client& client, const std::string& command, int fd)
     iss >> channelName >> userToKick;  
 
     if (iss.fail()) {
-        std::string errorMessage = "Error: You Just missing an argument(4)\n";
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_NEEDMOREPARAMS(nick, "KICK");
         sendData(fd, errorMessage);
         client.clearCommand();
         return;
@@ -217,7 +228,14 @@ void Server::processTopicCmd(Client& client, const std::string& command, int fd)
     std::getline(iss, topic);
     
     if (iss.fail() || channelName.empty()) {
-        std::string errorMessage = "Error: You Just missing an argument(3)\n";
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_NEEDMOREPARAMS(nick, "TOPIC");
         sendData(fd, errorMessage);
         client.clearCommand();
         return;
@@ -275,7 +293,14 @@ void Server::processInviteCmd(Client& client, const std::string& command, int fd
     iss >> nickname >> channelName;
     
     if (iss.fail() || nickname.empty() || channelName.empty()) {
-        std::string errorMessage = "Error: You Just missing an argument(2)\n";
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_NEEDMOREPARAMS(nick, "INVITE");
         sendData(fd, errorMessage);
         client.clearCommand();
         return;
@@ -309,7 +334,14 @@ void Server::processInviteCmd(Client& client, const std::string& command, int fd
         handleInvitation(fd, nickname, channelName);
     }
     else {
-        std::string errorMessage = ERROR_MESSAGE7(channelName, fd);
+        std::string nick;
+        for (size_t i = 0; i < _clients.size(); ++i) {
+            if (_clients[i].getFd() == fd) {
+                nick = _clients[i].getNick();
+                break;
+            }
+        }
+        std::string errorMessage = ERROR_CHANOPRIVSNEEDED(nick, channelName);
         sendData(fd, errorMessage);
     }
 }

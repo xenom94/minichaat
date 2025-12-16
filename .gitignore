@@ -1,0 +1,16 @@
+# Build artifacts
+*.o
+ircserv
+
+# Logs
+*.log
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# System files
+.DS_Store
